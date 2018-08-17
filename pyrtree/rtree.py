@@ -1,27 +1,27 @@
 ## R-tree.
 # see doc/ref/r-tree-clustering-split-algo.pdf
 from __future__ import absolute_import
-
-MAXCHILDREN=10
-MAX_KMEANS=5
 import math, random, sys
 import time
 import array
-
 from .rect import Rect, union_all, NullRect
+
+MAXCHILDREN = 10
+MAX_KMEANS = 5
+
 
 class RTree(object):
     def __init__(self):
         self.count = 0
-        self.stats = { 
-            "overflow_f" : 0,
-            "avg_overflow_t_f" : 0.0,
-            "longest_overflow" : 0.0,
-            "longest_kmeans" : 0.0,
-            "sum_kmeans_iter_f" : 0,
-            "count_kmeans_iter_f" : 0,
-            "avg_kmeans_iter_f" : 0.0
-            }
+        self.stats = {
+            "overflow_f": 0,
+            "avg_overflow_t_f": 0.0,
+            "longest_overflow": 0.0,
+            "longest_kmeans": 0.0,
+            "sum_kmeans_iter_f": 0,
+            "count_kmeans_iter_f": 0,
+            "avg_kmeans_iter_f": 0.0
+        }
 
         # This round: not using objects directly -- they
         #   take up too much memory, and efficiency goes down the toilet
@@ -33,80 +33,90 @@ class RTree(object):
         self.leaf_count = 0
         self.rect_pool = array.array('d')
         self.node_pool = array.array('L')
-        self.leaf_pool = [] # leaf objects. 
+        self.leaf_pool = []  # leaf objects.
 
         self.cursor = _NodeCursor.create(self, NullRect)
 
     def _ensure_pool(self, idx):
-        if len(self.rect_pool) < (4*idx):
-            self.rect_pool.extend([0,0,0,0] * idx)
-            self.node_pool.extend([0,0] * idx)
+        if len(self.rect_pool) < (4 * idx):
+            self.rect_pool.extend([0, 0, 0, 0] * idx)
+            self.node_pool.extend([0, 0] * idx)
 
-    def insert(self,o, orect):
-        self.cursor.insert(o,orect)
-        assert(self.cursor.index == 0)
+    def insert(self, o, orect):
+        self.cursor.insert(o, orect)
+        assert (self.cursor.index == 0)
 
     def query_rect(self, r):
-        for x in self.cursor.query_rect(r): yield x
+        for x in self.cursor.query_rect(r):
+            yield x
+
     def query_point(self, p):
-        for x in self.cursor.query_point(p): yield x
-    def walk(self,pred):
+        for x in self.cursor.query_point(p):
+            yield x
+
+    def walk(self, pred):
         return self.cursor.walk(pred)
+
 
 class _NodeCursor(object):
     @classmethod
     def create(cls, rooto, rect):
+        """
+        在rooto上创建一个节点，扩展rooto的pool(Node pool, rect pool)大小，
+        包含_NodeCursor对象，其root为rooto节点，idx为当前rooto的第几个元素，rect为传过来的rect数据
+        first_child, next_sibling为默认值0
+        最后将数据写入到创建的叶子节点的数据中
+        :param rooto:
+        :param rect:
+        :return:
+        """
         idx = rooto.count
         rooto.count += 1
-        
         rooto._ensure_pool(idx + 1)
-        #rooto.node_pool.extend([0,0])
-        #rooto.rect_pool.extend([0,0,0,0])
-
-        retv = _NodeCursor(rooto,idx,rect,0,0)
-
+        retv = _NodeCursor(rooto, idx, rect, 0, 0)
         retv._save_back()
         return retv
 
     @classmethod
     def create_with_children(cls, children, rooto):
         rect = union_all([c for c in children])
-        nr = Rect(rect.x,rect.y,rect.xx,rect.yy)
-        assert(not rect.swapped_x)
-        nc = _NodeCursor.create(rooto,rect)
+        assert (not rect.swapped_x)
+        nc = _NodeCursor.create(rooto, rect)
         nc._set_children(children)
-        assert(not nc.is_leaf())
+        assert (not nc.is_leaf())
         return nc
 
     @classmethod
     def create_leaf(cls, rooto, leaf_obj, leaf_rect):
-        rect = Rect(leaf_rect.x,leaf_rect.y,leaf_rect.xx,leaf_rect.yy)
-        rect.swapped_x = True # Mark as leaf by setting the xswap flag.
+        rect = Rect(leaf_rect.x, leaf_rect.y, leaf_rect.xx, leaf_rect.yy)
+        rect.swapped_x = True  # Mark as leaf by setting the xswap flag.
         res = _NodeCursor.create(rooto, rect)
         idx = res.index
         res.first_child = rooto.leaf_count
         rooto.leaf_count += 1
+        # 其sibling为0
         res.next_sibling = 0
         rooto.leaf_pool.append(leaf_obj)
         res._save_back()
         res._become(idx)
-        assert(res.is_leaf())
+        assert (res.is_leaf())
         return res
 
-    __slots__ = ("root","npool","rpool","index","rect","next_sibling","first_child")
+    __slots__ = ("root", "npool", "rpool", "index", "rect", "next_sibling", "first_child")
 
     def __init__(self, rooto, index, rect, first_child, next_sibling):
         self.root = rooto
         self.rpool = rooto.rect_pool
         self.npool = rooto.node_pool
 
+        # 表示子节点的顺序
         self.index = index
         self.rect = rect
         self.next_sibling = next_sibling
         self.first_child = first_child
 
     def walk(self, predicate):
-        if (predicate(self, self.leaf_obj())):
+        if predicate(self):
             yield self
             if not self.is_leaf():
                 for c in self.children():
@@ -115,37 +125,49 @@ class _NodeCursor(object):
 
     def query_rect(self, r):
         """ Return things that intersect with 'r'. """
-        def p(o,x): return r.does_intersect(o.rect)
+
+        def p(o): return r.does_intersect(o.rect)
+
         for rr in self.walk(p):
             yield rr
 
-    def query_point(self,point):
+    def query_point(self, point):
         """ Query by a point """
-        def p(o,x): return o.rect.does_containpoint(point)
-            
+
+        def p(o, x): return o.rect.does_containpoint(point)
+
         for rr in self.walk(p):
             yield rr
 
     def lift(self):
         return _NodeCursor(self.root,
                            self.index,
-                           self.rect, 
+                           self.rect,
                            self.first_child,
                            self.next_sibling)
 
     def _become(self, index):
+        """
+        将某个节点转换成对应需要转换成的节点，只需要改变以下：
+            1. index：该子节点在父节点的children的次序(node_pool和rect_pool中的位置)
+            2. first_child: 第一个孩子节点，只有在有孩子节点才有用，对于叶子节点是没有用的
+            3. next_sibling: 下一个兄弟节点
+            4. rect: 要转换成的节点的矩形数据，如果是叶子节点的话，swapped_x 为True
+        :param index: 该子节点在父节点的children的次序(node_pool和rect_pool中的位置)
+        :return:
+        """
         recti = index * 4
         nodei = index * 2
         rp = self.rpool
         x = rp[recti]
-        y = rp[recti+1]
-        xx = rp[recti+2]
-        yy = rp[recti+3]
+        y = rp[recti + 1]
+        xx = rp[recti + 2]
+        yy = rp[recti + 3]
 
-        if (x == 0.0 and y == 0.0 and xx == 0.0 and yy == 0.0): 
+        if x == 0.0 and y == 0.0 and xx == 0.0 and yy == 0.0:
             self.rect = NullRect
         else:
-            self.rect = Rect(x,y,xx,yy)
+            self.rect = Rect(x, y, xx, yy)
 
         self.next_sibling = self.npool[nodei]
         self.first_child = self.npool[nodei + 1]
@@ -158,40 +180,61 @@ class _NodeCursor(object):
         return not self.is_leaf() and 0 != self.first_child
 
     def holds_leaves(self):
-        if 0 == self.first_child: return True
+        """
+        判断该节点是否包含叶子节点，也就是说是否是最低一层次的非叶子节点
+        :return:
+        """
+        # first_child为0这种节点应该是根节点之类的
+        if 0 == self.first_child:
+            return True
         else:
+            # 如果包含children而且children是叶子节点的话，为True
             return self.has_children() and self.get_first_child().is_leaf()
-    
+
     def get_first_child(self):
-        fc = self.first_child
-        c = _NodeCursor(self.root,0,NullRect,0,0)
+        """
+        获取第一个子节点，父节点的first_child记录了第一个孩子节点的位置
+        因此可以在对应的rect_pool和node_pool找到相应的数据
+        :return:
+        """
+        c = _NodeCursor(self.root, 0, NullRect, 0, 0)
         c._become(self.first_child)
         return c
 
     def leaf_obj(self):
-        if self.is_leaf(): return self.root.leaf_pool[self.first_child]
-        else: return None
+        """
+        获取第一个叶子节点的数据
+        :return:
+        """
+        if self.is_leaf():
+            return self.root.leaf_pool[self.first_child]
+        else:
+            return None
 
     def _save_back(self):
+        """
+        将当前节点的数据写入到rect_pool和node_pool中
+        :return:
+        """
         rp = self.rpool
         recti = self.index * 4
         nodei = self.index * 2
 
         if self.rect is not NullRect:
             self.rect.write_raw_coords(rp, recti)
-        else: 
+        else:
             rp[recti] = 0
-            rp[recti+1] = 0
-            rp[recti+2] = 0
-            rp[recti+3] = 0
+            rp[recti + 1] = 0
+            rp[recti + 2] = 0
+            rp[recti + 3] = 0
 
         self.npool[nodei] = self.next_sibling
         self.npool[nodei + 1] = self.first_child
-    
+
     def nchildren(self):
-        i = self.index
         c = 0
-        for x in self.children(): c += 1
+        for _ in self.children():
+            c += 1
         return c
 
     def insert(self, leafo, leafrect):
@@ -200,13 +243,17 @@ class _NodeCursor(object):
         # tail recursion, made into loop:
         while True:
             if self.holds_leaves():
+                # 如果遍历到一个包含叶子节点的地方，那么就将要插入的节点插入到该矩形框下面
+                # 合并包裹众多叶子结点矩形框的大矩形框
                 self.rect = self.rect.union(leafrect)
-                self._insert_child(_NodeCursor.create_leaf(self.root,leafo,leafrect))
+                # 创建叶子节点，并且进行插入, self.root 为包含这些叶子节点的非叶子结点
+                self._insert_child(_NodeCursor.create_leaf(self.root, leafo, leafrect))
 
                 self._balance()
-                
+
                 # done: become the original again
                 self._become(index)
+                # 在合并后就直接返回了，所以不会遍历到叶子节点
                 return
             else:
                 # Not holding leaves, move down a level in the tree:
@@ -217,13 +264,14 @@ class _NodeCursor(object):
                 child = None
                 minarea = -1.0
                 for c in self.children():
-                    x,y,xx,yy = c.rect.coords()
-                    lx,ly,lxx,lyy = leafrect.coords()
+                    x, y, xx, yy = c.rect.coords()
+                    lx, ly, lxx, lyy = leafrect.coords()
                     nx = x if x < lx else lx
                     nxx = xx if xx > lxx else lxx
                     ny = y if y < ly else ly
                     nyy = yy if yy > lyy else lyy
                     a = (nxx - nx) * (nyy - ny)
+                    # 找到能合并的，并且合并之后面积最小的子节点
                     if minarea < 0 or a < minarea:
                         minarea = a
                         child = c.index
@@ -231,44 +279,43 @@ class _NodeCursor(object):
 
                 self.rect = self.rect.union(leafrect)
                 self._save_back()
-                self._become(child) # recurse.
-            
+                self._become(child)  # recurse.
+
     def _balance(self):
-        if (self.nchildren() <= MAXCHILDREN):
+        if self.nchildren() <= MAXCHILDREN:
             return
-
-
+        # 如果子节点数目超过了最大限制，则要分裂当前非叶子节点，并且进行合并，使用K-Means
         t = time.clock()
-        
-        cur_score = -10
 
-        s_children = [ c.lift() for c in self.children() ]
+        s_children = [c.lift() for c in self.children()]
 
         memo = {}
+        # 将叶子节点分别分为2,3,4,5个中心点的cluster
+        clusters = [k_means_cluster(self.root, k, s_children) for k in range(2, MAX_KMEANS)]
+        score, best_cluster = max([(silhouette_coeff(c, memo), c) for c in clusters])
 
-        clusterings = [ k_means_cluster(self.root,k,s_children) for k in range(2,MAX_KMEANS) ]
-        score,bestcluster = max( [ (silhouette_coeff(c,memo),c) for c in clusterings ])
-
-        nodes = [ _NodeCursor.create_with_children(c,self.root) for c in bestcluster if len(c) > 0]
+        # best_cluster是某个(n个中心点)的不同叶子节点的聚类，c是每个中心点所包含的所有叶子结点集合
+        # 将不同聚类的叶子结点分别创建根节点，最后绑定到当前非叶子结点上
+        nodes = [_NodeCursor.create_with_children(c, self.root) for c in best_cluster if len(c) > 0]
 
         self._set_children(nodes)
-        
+
         dur = (time.clock() - t)
-        c = float(self.root.stats["overflow_f"]) 
+        c = float(self.root.stats["overflow_f"])
         oa = self.root.stats["avg_overflow_t_f"]
         self.root.stats["avg_overflow_t_f"] = (dur / (c + 1.0)) + (c * oa / (c + 1.0))
         self.root.stats["overflow_f"] += 1
         self.root.stats["longest_overflow"] = max(self.root.stats["longest_overflow"], dur)
-            
+
     def _set_children(self, cs):
         self.first_child = 0
 
-        if 0 == len(cs): 
+        if 0 == len(cs):
             return
 
         pred = None
         for c in cs:
-            if pred is not None: 
+            if pred is not None:
                 pred.next_sibling = c.index
                 pred._save_back()
             if 0 == self.first_child:
@@ -279,14 +326,17 @@ class _NodeCursor(object):
         self._save_back()
 
     def _insert_child(self, c):
+        # 原始节点的first_child作为插入叶子节点的兄弟节点
         c.next_sibling = self.first_child
+        # 新插入的作为first_child
         self.first_child = c.index
+        # 将数据写入rect_pool和node_pool
         c._save_back()
         self._save_back()
-        
 
     def children(self):
-        if (0 == self.first_child): return
+        if 0 == self.first_child:
+            return
 
         idx = self.index
         fc = self.first_child
@@ -298,71 +348,80 @@ class _NodeCursor(object):
             yield self
             if 0 == self.next_sibling:
                 break
-            else: self._become(self.next_sibling)
+            else:
+                self._become(self.next_sibling)
 
         # Go back to becoming the same node we were.
-        #self._become(idx)
+        # self._become(idx)
         self.index = idx
         self.first_child = fc
         self.next_sibling = ns
         self.rect = r
+
 
 def avg_diagonals(node, onodes, memo_tab):
     nidx = node.index
     sv = 0.0
     diag = 0.0
     for onode in onodes:
-        k1 = (nidx,onode.index)
-        k2 = (onode.index,nidx)
-        if k1 in memo_tab: 
+        k1 = (nidx, onode.index)
+        k2 = (onode.index, nidx)
+        if k1 in memo_tab:
             diag = memo_tab[k1]
         elif k2 in memo_tab:
             diag = memo_tab[k2]
         else:
             diag = node.rect.union(onode.rect).diagonal()
             memo_tab[k1] = diag
-        
+
         sv += diag
 
     return sv / len(onodes)
 
+
 def silhouette_w(node, cluster, next_closest_cluster, memo):
     ndist = avg_diagonals(node, cluster, memo)
     sdist = avg_diagonals(node, next_closest_cluster, memo)
-    return (sdist - ndist) / max(sdist,ndist)
+    return (sdist - ndist) / max(sdist, ndist)
+
 
 def silhouette_coeff(clustering, memo_tab):
     # special case for a clustering of 1.0
-    if (len(clustering) == 1): return 1.0
+    if len(clustering) == 1:
+        return 1.0
 
     coeffs = []
     for cluster in clustering:
-        others = [ c for c in clustering if c is not cluster ]
-        others_cntr = [ center_of_gravity(c) for c in others ]
-        ws = [ silhouette_w(node,cluster,others[closest(others_cntr,node)], memo_tab) for node in cluster ]
+        others = [c for c in clustering if c is not cluster]
+        others_cntr = [center_of_gravity(c) for c in others]
+        ws = [silhouette_w(node, cluster, others[closest(others_cntr, node)], memo_tab) for node in cluster]
         cluster_coeff = sum(ws) / len(ws)
         coeffs.append(cluster_coeff)
     return sum(coeffs) / len(coeffs)
 
+
 def center_of_gravity(nodes):
-    totarea = 0.0
-    xs,ys = 0,0
+    total_area = 0.0
+    xs, ys = 0, 0
     for n in nodes:
         if n.rect is not NullRect:
-            x,y,w,h = n.rect.extent()
-            a = w*h
+            x, y, w, h = n.rect.extent()
+            a = w * h
+            # a是对x, y改变的权重
             xs = xs + (a * (x + (0.5 * w)))
             ys = ys + (a * (y + (0.5 * h)))
-            totarea = totarea + a
-    return (xs / totarea), (ys / totarea)
+            total_area = total_area + a
+    return xs / total_area, ys / total_area
+
 
 def closest(centroids, node):
-    x,y = center_of_gravity([node])
+    x, y = center_of_gravity([node])
     dist = -1
     ridx = -1
 
-    for (i,(xx,yy)) in enumerate(centroids):
-        dsq = ((xx-x) ** 2) + ((yy-y) ** 2)
+    for (i, (xx, yy)) in enumerate(centroids):
+        # 计算距离
+        dsq = ((xx - x) ** 2) + ((yy - y) ** 2)
         if -1 == dist or dsq < dist:
             dist = dsq
             ridx = i
@@ -370,48 +429,44 @@ def closest(centroids, node):
 
 
 def k_means_cluster(root, k, nodes):
+    """
+
+    :param root: 某个非叶子节点
+    :param k: 将nodes分为k组
+    :param nodes: 某个非叶子节点下的所有节点
+    :return:
+    """
     t = time.clock()
-    if len(nodes) <= k: return [ [n] for n in nodes ]
-    
+    if len(nodes) <= k:
+        return [[n] for n in nodes]
+
     ns = list(nodes)
     root.stats["count_kmeans_iter_f"] += 1
 
     # Initialize: take n random nodes.
     random.shuffle(ns)
+    # 找到k个中心点
+    cluster_centers = [center_of_gravity([n]) for n in ns[:k]]
 
-    cluster_starts = ns[:k]
-    cluster_centers = [ center_of_gravity([n]) for n in ns[:k] ]
-    
-    
     # Loop until stable:
     while True:
         root.stats["sum_kmeans_iter_f"] += 1
-        clusters = [ [] for c in cluster_centers ]
-        
-        for n in ns: 
+        clusters = [[] for c in cluster_centers]
+
+        for n in ns:
+            # 距离n节点最近的中心点，中心点有k个
             idx = closest(cluster_centers, n)
+            # 按照不同的中心点将节点进行分类
             clusters[idx].append(n)
-        
-        #FIXME HACK TODO: is it okay for there to be empty clusters?
-        clusters = [ c for c in clusters if len(c) > 0 ]
 
-        for c in clusters:
-            if (len(c) == 0):
-                print("Errorrr....")
-                print("Nodes: %d, centers: %s" % (len(ns),
-                                                              repr(cluster_centers)))
+        # FIXME HACK TODO: is it okay for there to be empty clusters?
+        clusters = [c for c in clusters if len(c) > 0]
 
-            assert(len(c) > 0)
-            
-        rest = ns
-        first = False
-
-        new_cluster_centers = [ center_of_gravity(c) for c in clusters ]
-        if new_cluster_centers == cluster_centers : 
+        # 直到收敛
+        new_cluster_centers = [center_of_gravity(c) for c in clusters]
+        if new_cluster_centers == cluster_centers:
             root.stats["avg_kmeans_iter_f"] = float(root.stats["sum_kmeans_iter_f"] / root.stats["count_kmeans_iter_f"])
             root.stats["longest_kmeans"] = max(root.stats["longest_kmeans"], (time.clock() - t))
             return clusters
-        else: cluster_centers = new_cluster_centers
-        
-    
-    
+        else:
+            cluster_centers = new_cluster_centers

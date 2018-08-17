@@ -8,7 +8,7 @@ if __name__ == "__main__":
     sys.path.append(os.path.abspath(os.path.join(mypath, "../../")))
 
 from pyrtree.bench.bench_rtree import ITER,INTERVAL
-from pyrtree.tests.test_rtree import RectangleGen,TstO
+from tests import RectangleGen
 import time
 from rtree import Rtree
 

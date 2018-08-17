@@ -6,7 +6,7 @@ if __name__ == "__main__":
     sys.path.append(os.path.abspath(os.path.join(mypath, "../../")))
 
 from pyrtree.rtree import RTree
-from pyrtree.tests.test_rtree import RectangleGen,TstO
+from tests import RectangleGen,TstO
 
 import time
 
