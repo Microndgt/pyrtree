@@ -3,7 +3,7 @@ import math
 import collections
 import unittest as ut
 
-from pyrtree import Rect, RTree
+from pyrtree import Rectangle, RTree, NullRect
 from .testutil import take
 
 
@@ -26,7 +26,7 @@ class RectangleGen(object):
 
     def rect(self, size=10.0):
         x, y, w, h = rr(), rr(), random.uniform(0.0, size), random.uniform(0.0, size)
-        r = Rect(x, y, x + w, y + h)
+        r = Rectangle(x, y, x + w, y + h)
         assert (not r.swapped_x)
         assert (not r.swapped_y)
         return r
@@ -34,7 +34,7 @@ class RectangleGen(object):
     def intersectingWith(self, ra):
         rb_x = random.uniform(ra.x, ra.xx)
         rb_y = random.uniform(ra.y, ra.yy)
-        return Rect(rb_x, rb_y, rb_x + rr(), rb_y + rr())
+        return Rectangle(rb_x, rb_y, rb_x + rr(), rb_y + rr())
 
     def disjointWith(self, ra):
         ax, ay, aw, ah = ra.extent()
@@ -44,7 +44,7 @@ class RectangleGen(object):
         ang = random.uniform(0.0, 2.0 * math.pi)
         x = math.cos(ang) * dist
         y = math.sin(ang) * dist
-        return Rect(ax + x, ay + y, ax + x + w, ay + y + h)
+        return Rectangle(ax + x, ay + y, ax + x + w, ay + y + h)
 
     def pointInside(self, r):
         return (random.uniform(r.x, r.xx), random.uniform(r.y, r.yy))
@@ -73,13 +73,13 @@ G = RectangleGen()
 
 class RectangleTests(ut.TestCase):
     def testCons(self):
-        r = Rect(0, 0, 10, 10)
+        r = Rectangle(0, 0, 10, 10)
         self.assertTrue(r is not None)
         self.assertTrue(r is not NullRect)
 
     def testIntersection(self):
-        ra = Rect(0, 0, 10, 10)
-        rb = Rect(5, 5, 15, 15)
+        ra = Rectangle(0, 0, 10, 10)
+        rb = Rectangle(5, 5, 15, 15)
         res = ra.intersect(rb)
         x, y, w, h = res.extent()
         self.assertEquals(x, 5)
@@ -88,8 +88,8 @@ class RectangleTests(ut.TestCase):
         self.assertEquals(h, 5)
         self.assertEquals(res.area(), 25)
 
-        rc = Rect(0, 0, 10, 10)
-        rd = Rect(11, 11, 21, 21)
+        rc = Rectangle(0, 0, 10, 10)
+        rd = Rectangle(11, 11, 21, 21)
         res2 = rc.intersect(rd)
         self.assertEquals(res2.area(), 0)
         self.assertTrue(res2 is NullRect)
@@ -104,8 +104,8 @@ class RectangleTests(ut.TestCase):
         self.assertTrue(NullRect.intersect(ra) is NullRect)
 
     def testUnion(self):
-        ra = Rect(0, 0, 10, 10)
-        rb = Rect(-10, -10, 1, 1)
+        ra = Rectangle(0, 0, 10, 10)
+        rb = Rectangle(-10, -10, 1, 1)
         x, y, w, h = ra.union(rb).extent()
         self.assertEquals(x, -10)
         self.assertEquals(y, -10)
@@ -175,7 +175,7 @@ class RTreeTest(ut.TestCase):
                 self.assertTrue(not c.is_leaf())
         self.assertEquals(idx, node.index)
 
-        r = Rect(node.rect.x, node.rect.y, node.rect.xx, node.rect.yy)
+        r = Rectangle(node.rect.x, node.rect.y, node.rect.xx, node.rect.yy)
         for c in node.children():
             assert r.does_contain(c.rect)
 

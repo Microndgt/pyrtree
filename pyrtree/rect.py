@@ -1,52 +1,65 @@
 import math
 
 
-class Rect(object):
-    """
-    A rectangle class that stores: an axis aligned rectangle, and: two
-     flags (swapped_x and swapped_y).  (The flags are stored
-     implicitly via swaps in the order of minx/y and maxx/y.)
-    """
-
+class Rectangle(object):
     __slots__ = ("x", "y", "xx", "yy", "swapped_x", "swapped_y")
 
     def __init__(self, minx, miny, maxx, maxy):
-        self.swapped_x = (maxx < minx)
-        self.swapped_y = (maxy < miny)
-        self.x = minx
-        self.y = miny
-        self.xx = maxx
-        self.yy = maxy
-
+        """
+        minx,miny为矩形左下角的点，maxx, maxy为矩形右上角的点
+        :param minx:
+        :param miny:
+        :param maxx:
+        :param maxy:
+        """
+        self.swapped_x = maxx < minx
+        self.swapped_y = maxy < miny
         if self.swapped_x:
             self.x, self.xx = maxx, minx
+        else:
+            self.x, self.xx = minx, maxx
+
         if self.swapped_y:
             self.y, self.yy = maxy, miny
+        else:
+            self.y, self.yy = miny, maxy
 
     def __repr__(self):
-        return '<Rect({}, {}, {}, {})>'.format(self.x, self.y, self.xx, self.yy)
+        return '<Rectangle({}, {}, {}, {})>'.format(self.x, self.y, self.xx, self.yy)
 
     def coords(self):
         return self.x, self.y, self.xx, self.yy
 
-    def overlap(self, orect):
-        return self.intersect(orect).area()
+    def overlap(self, target_rect):
+        """
+        重叠面积
+        :param target_rect:
+        :return:
+        """
+        return self.intersect(target_rect).area()
 
-    def write_raw_coords(self, toarray, idx):
+    def overlap_rate(self, target_rect):
+        """
+        重叠率
+        :param target_rect:
+        :return:
+        """
+        return self.overlap(target_rect) / min(self.area(), target_rect.area())
+
+    def write_raw_coords(self, rect_array, idx):
         if self.swapped_x:
-            # 叶子节点
-            toarray[idx] = self.xx
-            toarray[idx + 2] = self.x
+            rect_array[idx] = self.xx
+            rect_array[idx + 2] = self.x
         else:
-            toarray[idx] = self.x
-            toarray[idx + 2] = self.xx
+            rect_array[idx] = self.x
+            rect_array[idx + 2] = self.xx
 
         if self.swapped_y:
-            toarray[idx + 1] = self.yy
-            toarray[idx + 3] = self.y
+            rect_array[idx + 1] = self.yy
+            rect_array[idx + 3] = self.y
         else:
-            toarray[idx + 1] = self.y
-            toarray[idx + 3] = self.yy
+            rect_array[idx + 1] = self.y
+            rect_array[idx + 3] = self.yy
 
     def area(self):
         """
@@ -58,17 +71,17 @@ class Rect(object):
         return w * h
 
     def extent(self):
+        """
+        返回左下角坐标和矩形的宽和高
+        :return:
+        """
         x = self.x
         y = self.y
         return x, y, self.xx - x, self.yy - y
 
-    def grow(self, amt):
-        a = amt * 0.5
-        return Rect(self.x - a, self.y - a, self.xx + a, self.yy + a)
-
     def intersect(self, o):
         """
-        获取两个矩形相交的部分(矩形)
+        获取两个矩形相交部分(矩形)
         :param o:
         :return:
         """
@@ -84,57 +97,82 @@ class Rect(object):
         if w <= 0 or h <= 0:
             return NullRect
 
-        return Rect(nx, ny, nx2, ny2)
+        return Rectangle(nx, ny, nx2, ny2)
 
-    def does_contain(self, o):
-        return self.does_containpoint((o.x, o.y)) and self.does_containpoint((o.xx, o.yy))
+    def does_contain(self, object_rect):
+        """
+        判断当前矩形是否整个包含目标矩形
+        :param object_rect:
+        :return:
+        """
+        return self.does_contain_point((object_rect.x, object_rect.y)) and self.does_contain_point((object_rect.xx, object_rect.yy))
 
-    def does_intersect(self, o):
-        return self.intersect(o).area() > 0
+    def does_intersect(self, object_rect):
+        """
+        判断当前矩形是否和目标矩形有重叠
+        :param object_rect:
+        :return:
+        """
+        return self.intersect(object_rect).area() > 0
 
-    def does_containpoint(self, p):
+    def does_contain_point(self, p):
+        """
+        判断当前矩形是否包含某一点
+        :param p:
+        :return:
+        """
         x, y = p
-        return (x >= self.x and x <= self.xx and y >= self.y and y <= self.yy)
+        return self.x <= x <= self.xx and self.y <= y <= self.yy
 
-    def union(self, o):
-        if o is NullRect:
-            return Rect(self.x, self.y, self.xx, self.yy)
+    def union(self, object_rect):
+        """
+        获取两个矩形的并集，会生成一个包括两个矩形的新矩形
+        :param object_rect:
+        :return:
+        """
+        if object_rect is NullRect:
+            return Rectangle(self.x, self.y, self.xx, self.yy)
         if self is NullRect:
-            return Rect(o.x, o.y, o.xx, o.yy)
+            return Rectangle(object_rect.x, object_rect.y, object_rect.xx, object_rect.yy)
 
         x = self.x
         y = self.y
         xx = self.xx
         yy = self.yy
-        ox = o.x
-        oy = o.y
-        oxx = o.xx
-        oyy = o.yy
+        ox = object_rect.x
+        oy = object_rect.y
+        oxx = object_rect.xx
+        oyy = object_rect.yy
 
         nx = x if x < ox else ox
         ny = y if y < oy else oy
         nx2 = xx if xx > oxx else oxx
         ny2 = yy if yy > oyy else oyy
 
-        res = Rect(nx, ny, nx2, ny2)
+        res = Rectangle(nx, ny, nx2, ny2)
 
         return res
 
-    def union_point(self, o):
-        x, y = o
-        return self.union(Rect(x, y, x, y))
-
     def diagonal_sq(self):
-        if self is NullRect: return 0
+        """
+        返回矩形对角线长度的平方
+        :return:
+        """
+        if self is NullRect:
+            return 0
         w = self.xx - self.x
         h = self.yy - self.y
         return w * w + h * h
 
     def diagonal(self):
+        """
+        返回矩形对角线长度
+        :return:
+        """
         return math.sqrt(self.diagonal_sq())
 
 
-NullRect = Rect(0.0, 0.0, 0.0, 0.0)
+NullRect = Rectangle(0.0, 0.0, 0.0, 0.0)
 NullRect.swapped_x = False
 NullRect.swapped_y = False
 
@@ -148,8 +186,8 @@ def union_all(kids):
 
 
 if __name__ == '__main__':
-    a = Rect(0, 0, 5, 5)
-    b = Rect(1, 1, 3, 3)
+    a = Rectangle(0, 0, 5, 5)
+    b = Rectangle(1, 1, 3, 3)
     c = a.intersect(b)
     print(c)
 
